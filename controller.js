@@ -1,115 +1,79 @@
-import expressAsyncHandler from "express-async-handler";
-import fs, { createReadStream } from "fs";
-import amqp from "amqplib";
-import path from "path";
-import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import fs from 'fs'
+import path from 'path'
+import createID from './helper.js'
 
-import { Video } from "./model.js";
 
-const Home = expressAsyncHandler(async (req, res) => {
-  return res.status(200).json({
-    message: "Backend home page",
-  });
-});
-
-const createVideo = expressAsyncHandler(async (req, res) => {
-  try {
-    const allVideos = await Video.find({});
-
-    let name = `New Recording ${allVideos.length + 1}`;
-    let filePath = path.join(__dirname, `/videos/${name}.webm`);
-    const newVideo = await Video.create({
-      name,
-      path: filePath,
-    });
-    return res.status(200).json({
-      status: true,
-      id: newVideo._id,
-    });
-  } catch (error) {
-    throw new Error(error);
-  }
-});
-
-const appendVideo = expressAsyncHandler(async (req, res) => {
-  try {
-    const { id, data } = req.body;
-    if (!id || !data) {
-      res.status(400);
-      throw new Error("invalid parameters");
+export const createVideo = async (req, res) => {
+  const video_id = createID(10);
+  const videoFolderPath = path.join(
+    process.cwd(),
+    `.uploads/${video_id}`
+  );
+  fs.mkdir(videoFolderPath, { recursive: true }, (err) => {
+    if (err) {
+      return res.status(500).json({ error: err });
     }
-    console.log(req.body)
-    const myVideo = await Video.findById(id);
-    const dataBuffer = Buffer.from(data, "base64");
-    let path = myVideo.path;
-    const fileStream = fs.createWriteStream(path, { flags: "a" });
-    fileStream.write(dataBuffer);
-    return res.status(200).json({
-      status: true,
-      message: "success",
-    });
-  } catch (error) {
-    throw new Error(error);
+    return res.status(200).json({ success: "folder created", video_id });
+  });
+};
+
+export const uploadVideoBytes = async (req, res) => {
+  const blobFile = req.file;
+  const { id } = req.params;
+  console.log(blobFile.buffer);
+  const existingWriteFolder = `./public/uploads/${id}`;
+  if (!fs.existsSync(existingWriteFolder)) {
+    return res.status(500).json({ error: "invalid ID" });
   }
-});
+  const filename = id + ".blob";
+  const completePath = path.join(existingWriteFolder, filename);
+  const writeStream = fs.createWriteStream(completePath, { flags: "a" });
 
-const completeVideo = expressAsyncHandler(async (req, res) => {
-  try {
-    const { id } = req.body;
-    let myVideo = await Video.findById(id);
-    let path = myVideo.path;
-    let video = fs.readFileSync(path, (err, data) => {
-      if (err) {
-        throw new Error(err);
-      }
-      return data;
-    });
-
-    const queue = "video";
-    let url = process.env.AMQPURL;
-    const details = {
-      id,
-      video,
-    }(async () => {
-      let connection;
-      try {
-        connection = await amqp.connect(url);
-        const channel = await connection.createChannel();
-
-        await channel.assertQueue(queue, { durable: false });
-        channel.sendToQueue(queue, Buffer.from(JSON.stringify(details)));
-        console.log(" [x] Sent '%s'", details);
-        await channel.close();
-      } catch (err) {
-        console.warn(err);
-      } finally {
-        if (connection) await connection.close();
-      }
-    })();
-
-    return res.status(200).json({
-      status: true,
-      message: "success",
-    });
-  } catch (error) {
-    throw new Error(error);
+  // writeStream.write(blobFile.buffer);
+  for (let offset = 0; offset < blobFile.buffer.length; offset += 1024) {
+    const chunk = blobFile.buffer.slice(offset, offset + 1024); // Change 1024 to your desired chunk size
+    writeStream.write(chunk);
   }
-});
 
-const getVideo = expressAsyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const myVideo = await Video.findById(id);
-
-    res.writeHead(200, {
-      "Content-Type": "video/mp4",
+  writeStream.end();
+  writeStream.on("finish", () => {
+    return res.send({
+      message: "file saved succesfully",
+      link: `http://localhost:8000/api/vids/stream/${id}`,
     });
-    createReadStream(myVideo.path).pipe(res);
-  } catch (error) {
-    throw new Error(error);
+  });
+  writeStream.on("error", () => {
+    return res.send("error wrting file to disk");
+  });
+};
+export const streamVideo = async (req, res) => {
+  const { id } = req.params;
+  console.log(id);
+  const filePath = `./uploads/${id}/${id}.blob`;
+  if (!fs.existsSync(filePath)) {
+    return res.status(500).json({ error: "invalid ID" });
   }
-});
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  console.log(fileSize);
+  const fileStream = fs.createReadStream(filePath);
+  const head = {
+    "Content-Length": fileSize,
+    "Content-Type": "video/mp4",
+  };
+  res.writeHead(200, head);
+  fileStream.pipe(res);
+};
 
-export { Home, createVideo, appendVideo, completeVideo, getVideo };
+export const autoStream = async (req, res) => {
+  const { id } = req.params;
+  console.log(id);
+  const filePath = `./uploads/${id}/${id}.blob`;
+  if (!fs.existsSync(filePath)) {
+    return res.status(500).json({ error: "invalid ID" });
+  }
+  res.render("view", {
+    videoLink: `http://localhost:8000/api/vids/stream/${id}`,
+  });
+};
+

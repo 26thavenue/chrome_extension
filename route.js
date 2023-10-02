@@ -1,18 +1,17 @@
 import  express  from "express";
-import { Home, appendVideo, completeVideo, createVideo, getVideo } from "./controller.js";
+import {store} from './middleware.js'
+const router = express.Router();
 
-const Router = express.Router()
+import {
+  createVideo,
+  uploadVideoBytes,
+  streamVideo,
+  autoStream,
+} from "./controller.js"
 
-Router.route("/").get(Home)
+router.get("/api/create", createVideo);
+router.post("/api/upload/:id", store.single("file"), uploadVideoBytes);
+router.get("/api/stream/:id", streamVideo);
+router.get("/api/autostream/:id", autoStream);
 
-Router.route("/api/create").post(createVideo)
-
-Router.route("/api/append").post(appendVideo)
-
-Router.route("/api/complete").post(completeVideo)
-
-Router.route("/api/:id").get(getVideo)
-
-export {
-    Router
-}
+export default router

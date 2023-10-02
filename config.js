@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { Router } from "./route.js";
+import  router  from "./route.js";
 import { errHandler, notFound } from "./middleware.js";
 import morgan from "morgan";
 
@@ -34,7 +34,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 app.use(morgan("dev"));
 
-app.use(Router);
+app.use(router);
 
 app.use(notFound);
 app.use(errHandler);
