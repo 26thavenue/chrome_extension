@@ -21,7 +21,8 @@ export const uploadVideoBytes = async (req, res) => {
   const blobFile = req.file;
   const { id } = req.params;
   console.log(blobFile.buffer);
-  const existingWriteFolder = `./public/uploads/${id}`;
+  console.log(id)
+  const existingWriteFolder = `./uploads/${id}`;
   if (!fs.existsSync(existingWriteFolder)) {
     return res.status(500).json({ error: "invalid ID" });
   }
@@ -46,6 +47,8 @@ export const uploadVideoBytes = async (req, res) => {
     return res.send("error wrting file to disk");
   });
 };
+
+
 export const streamVideo = async (req, res) => {
   const { id } = req.params;
   console.log(id);
